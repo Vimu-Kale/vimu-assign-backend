@@ -1,0 +1,147 @@
+import dotenv from "dotenv";
+dotenv.config();
+import Stripe from "stripe";
+import Order from "../models/order.js";
+
+const stripe = Stripe(process.env.STRIPE_KEY);
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+export const handleCheckout = async (req, res) => {
+  const customer = await stripe.customers.create({
+    metadata: {
+      userId: "1a2b3c",
+      cart: JSON.stringify(req.body.cartItems),
+    },
+  });
+
+  const line_items = req.body.cartItems.map((item) => {
+    return {
+      price_data: {
+        currency: "usd",
+        product_data: {
+          name: item.name,
+          metadata: {
+            id: item.id,
+          },
+        },
+        unit_amount: item.price * 100,
+      },
+      quantity: item.qty,
+    };
+  });
+  const session = await stripe.checkout.sessions.create({
+    shipping_address_collection: {
+      allowed_countries: ["US", "CA"],
+    },
+    shipping_options: [
+      {
+        shipping_rate_data: {
+          type: "fixed_amount",
+          fixed_amount: {
+            amount: 0,
+            currency: "usd",
+          },
+          display_name: "Free shipping",
+          // Delivers between 5-7 business days
+          delivery_estimate: {
+            minimum: {
+              unit: "business_day",
+              value: 5,
+            },
+            maximum: {
+              unit: "business_day",
+              value: 7,
+            },
+          },
+        },
+      },
+      {
+        shipping_rate_data: {
+          type: "fixed_amount",
+          fixed_amount: {
+            amount: 1500,
+            currency: "usd",
+          },
+          display_name: "Next day air",
+          // Delivers in exactly 1 business day
+          delivery_estimate: {
+            minimum: {
+              unit: "business_day",
+              value: 1,
+            },
+            maximum: {
+              unit: "business_day",
+              value: 1,
+            },
+          },
+        },
+      },
+    ],
+    phone_number_collection: { enabled: true },
+    customer: customer.id,
+    line_items,
+    mode: "payment",
+    success_url: `${process.env.CLIENT_URL}/?success=true`,
+    cancel_url: `${process.env.CLIENT_URL}/?cancelled=true`,
+  });
+
+  res.send({ url: session.url });
+};
+
+const createOrder = async (customer, data) => {
+  console.log("create order function");
+  const Items = JSON.parse(customer.metadata.cart);
+  const newOrder = new Order({
+    userId: customer.metadata.userId,
+    customerId: data.customer,
+    paymentIntentId: data.payment_intent,
+    products: Items,
+    subtotal: data.amount_subtotal,
+    total: data.amount_total,
+    shipping: data.customer_details,
+  });
+
+  try {
+    const savedOrder = await newOrder.save();
+
+    console.log("Order Saved:", savedOrder);
+  } catch (e) {
+    console.log(e);
+  }
+};
+
+export const handleWebhook = async (req, res) => {
+  const payload = req.body;
+  const payloadString = JSON.stringify(payload, null, 2);
+  const header = stripe.webhooks.generateTestHeaderString({
+    payload: payloadString,
+    secret: webhookSecret,
+  });
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      payloadString,
+      header,
+      webhookSecret
+    );
+    console.log("Webhook verified");
+  } catch (err) {
+    console.log(`⚠️  Webhook signature verification failed.`, err.message);
+    return res.sendStatus(400);
+  }
+
+  let data = event.data.object;
+
+  if (event.type === "checkout.session.completed") {
+    try {
+      const customer = await stripe.customers.retrieve(data.customer);
+      createOrder(customer, data);
+    } catch (error) {
+      console.log(error.message);
+    }
+  }
+
+  // Return a 200 response to acknowledge receipt of the event
+  res.sendStatus(200);
+};
