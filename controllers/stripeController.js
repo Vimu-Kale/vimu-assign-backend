@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 import Stripe from "stripe";
 import Order from "../models/order.js";
+import logger from "../utils/logger.js";
 
 const stripe = Stripe(process.env.STRIPE_KEY);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -20,6 +21,7 @@ export const handleCheckout = async (req, res) => {
         currency: "usd",
         product_data: {
           name: item.name,
+          images: [item.Image],
           metadata: {
             id: item.id,
           },
@@ -91,6 +93,8 @@ export const handleCheckout = async (req, res) => {
 const createOrder = async (customer, data) => {
   console.log("create order function");
   const Items = JSON.parse(customer.metadata.cart);
+  // console.log(Items);
+  // console.log(data);
   const newOrder = new Order({
     userId: customer.metadata.userId,
     customerId: data.customer,
@@ -106,7 +110,8 @@ const createOrder = async (customer, data) => {
 
     console.log("Order Saved:", savedOrder);
   } catch (e) {
-    console.log(e);
+    // console.log(e);
+    logger.error(e);
   }
 };
 
@@ -127,18 +132,21 @@ export const handleWebhook = async (req, res) => {
     );
     console.log("Webhook verified");
   } catch (err) {
-    console.log(`⚠️  Webhook signature verification failed.`, err.message);
+    // console.log(`⚠️  Webhook signature verification failed.`, err.message);
+    logger.error(`⚠️  Webhook signature verification failed.`, err.message);
     return res.sendStatus(400);
   }
 
   let data = event.data.object;
+  // console.log(data);
 
   if (event.type === "checkout.session.completed") {
     try {
       const customer = await stripe.customers.retrieve(data.customer);
       createOrder(customer, data);
     } catch (error) {
-      console.log(error.message);
+      logger.error(error.message);
+      // console.log(error.message);
     }
   }
 
