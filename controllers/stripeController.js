@@ -144,7 +144,7 @@ export const handleWebhook = async (req, res) => {
   }
 
   let data = event.data.object;
-  console.log(data);
+  // console.log(data);
 
   //CHECK FOR SUCCESSFUL CHECKOUT SESSION AND EXTRACT THE DATA FROM EVENT AND STORE IN DB
   if (event.type === "checkout.session.completed") {
@@ -153,7 +153,7 @@ export const handleWebhook = async (req, res) => {
       createOrder(customer, data);
     } catch (error) {
       logger.error(error.message);
-      console.log(error.message);
+      // console.log(error.message);
     }
   }
 
