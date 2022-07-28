@@ -7,7 +7,9 @@ import logger from "../utils/logger.js";
 const stripe = Stripe(process.env.STRIPE_KEY);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+// CONTROLLER TO GENERATE CHECKOUT SESSION URL
 export const handleCheckout = async (req, res) => {
+  //CREATING CUSTOMER ENTITY IN STRIPE(FURTHER CAN BE USED TO STORE ORDER DATA AFTER SUCCESS OR FOR SUBSCRIPTIONS)
   const customer = await stripe.customers.create({
     metadata: {
       userId: "1a2b3c",
@@ -15,6 +17,7 @@ export const handleCheckout = async (req, res) => {
     },
   });
 
+  //LINE ITEMS REFERS TO ITEM ENTRIES ON INVOICE WITH QTY. AMT. ETC
   const line_items = req.body.cartItems.map((item) => {
     return {
       price_data: {
@@ -31,6 +34,8 @@ export const handleCheckout = async (req, res) => {
       quantity: item.qty,
     };
   });
+
+  //CREATING A STRIPE CHECKOUT SESSION TO ACCEPT CARD AND SHIPING INFORMATION ALSO INCLUDING LINE ITEMS
   const session = await stripe.checkout.sessions.create({
     shipping_address_collection: {
       allowed_countries: ["US", "CA"],
@@ -44,7 +49,7 @@ export const handleCheckout = async (req, res) => {
             currency: "usd",
           },
           display_name: "Free shipping",
-          // Delivers between 5-7 business days
+          // DELIVERS BETWEEN 5-7 BUSINESS DAYS
           delivery_estimate: {
             minimum: {
               unit: "business_day",
@@ -65,7 +70,7 @@ export const handleCheckout = async (req, res) => {
             currency: "usd",
           },
           display_name: "Next day air",
-          // Delivers in exactly 1 business day
+          // DELIVERS IN EXACTLY 1 BUSINESS DAY
           delivery_estimate: {
             minimum: {
               unit: "business_day",
@@ -80,7 +85,7 @@ export const handleCheckout = async (req, res) => {
       },
     ],
     phone_number_collection: { enabled: true },
-    customer: customer.id,
+    customer: customer.id, //REFERS TO CUSTOMER ID THAT WE CREATED
     line_items,
     mode: "payment",
     success_url: `${process.env.CLIENT_URL}/?success=true`,
@@ -90,11 +95,12 @@ export const handleCheckout = async (req, res) => {
   res.send({ url: session.url });
 };
 
+//SAVING ORDER DETAAILS IN DB BASED ON EVENTS GENERATED ON STRIPE ACCOUNT
 const createOrder = async (customer, data) => {
   console.log("create order function");
   const Items = JSON.parse(customer.metadata.cart);
-  // console.log(Items);
-  // console.log(data);
+  console.log(Items);
+  console.log(data);
   const newOrder = new Order({
     userId: customer.metadata.userId,
     customerId: data.customer,
@@ -107,7 +113,6 @@ const createOrder = async (customer, data) => {
 
   try {
     const savedOrder = await newOrder.save();
-
     console.log("Order Saved:", savedOrder);
   } catch (e) {
     // console.log(e);
@@ -115,6 +120,7 @@ const createOrder = async (customer, data) => {
   }
 };
 
+//LISTENING TO EVENTS ON STRIPE ACCOUNT TRIGGERS THIS /webhook ENDPOINT
 export const handleWebhook = async (req, res) => {
   const payload = req.body;
   const payloadString = JSON.stringify(payload, null, 2);
@@ -138,18 +144,19 @@ export const handleWebhook = async (req, res) => {
   }
 
   let data = event.data.object;
-  // console.log(data);
+  console.log(data);
 
+  //CHECK FOR SUCCESSFUL CHECKOUT SESSION AND EXTRACT THE DATA FROM EVENT AND STORE IN DB
   if (event.type === "checkout.session.completed") {
     try {
       const customer = await stripe.customers.retrieve(data.customer);
       createOrder(customer, data);
     } catch (error) {
       logger.error(error.message);
-      // console.log(error.message);
+      console.log(error.message);
     }
   }
 
-  // Return a 200 response to acknowledge receipt of the event
+  // RETURN A 200 RESP. TO ACKNOWLEDGE RECEIPT OF THE EVENT
   res.sendStatus(200);
 };

@@ -6,6 +6,7 @@ import {
 } from "../controllers/stripeController.js";
 
 router.post("/create-checkout-session", handleCheckout);
+
 router.post(
   "/webhook",
   express.raw({ type: "application/json" }),
