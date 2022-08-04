@@ -8,7 +8,52 @@ const stripe = Stripe(process.env.STRIPE_KEY);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 // CONTROLLER TO GENERATE CHECKOUT SESSION URL
+
+/**
+ * @openapi
+ * '/api/stripe/create-checkout-session':
+ *  post:
+ *      tags:
+ *      - Payment
+ *      summary: Create Stripe Checkout Session With Product Details and User ID
+ *      requestBody:
+ *        required: true
+ *        content:
+ *          application/json:
+ *              schema:
+ *                type: object
+ *                required:
+ *                  - cartItems
+ *                properties:
+ *                  cartItems:
+ *                      type: array
+ *                      cartItems:
+ *                            type: object
+ *        responses:
+ *          200:
+ *            description: Success
+ *          400:
+ *            description: Bad request
+ */
 export const handleCheckout = async (req, res) => {
+  //IF REQ BODY EMPTY THEN REJECT
+  if (Object.keys(req.body).length === 0) {
+    res.status(400).json({
+      success: false,
+      message: "No Fields Passed In Request Body",
+    });
+    console.log("hoii");
+    return;
+  }
+
+  // IF NO CART ITEMS/NO LENGTH THEN REJECT
+  if (!req.body.cartItems || req.body.cartItems.length === 0) {
+    res
+      .status(400)
+      .json({ success: false, message: "CartItems cannot stay empty!" });
+    return;
+  }
+
   //CREATING CUSTOMER ENTITY IN STRIPE(FURTHER CAN BE USED TO STORE ORDER DATA AFTER SUCCESS OR FOR SUBSCRIPTIONS)
   const customer = await stripe.customers.create({
     metadata: {
